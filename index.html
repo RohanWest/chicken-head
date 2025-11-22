@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chicken Head - The Legend of Asher</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #87CEEB; }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #87CEEB; touch-action: none; user-select: none; -webkit-user-select: none; }
         
         /* UI Overlay */
         #ui-container {
@@ -165,6 +165,40 @@
             font-size: 14px;
         }
 
+        /* Virtual Joystick */
+        #joystick-zone {
+            position: absolute;
+            bottom: 40px;
+            left: 40px;
+            width: 120px;
+            height: 120px;
+            z-index: 100;
+            display: none; /* Shown on game start */
+        }
+
+        .joystick-base {
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            position: relative;
+            backdrop-filter: blur(2px);
+        }
+
+        .joystick-stick {
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 235, 59, 0.8); /* Yellow tint */
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            pointer-events: none; /* Let events pass through to zone */
+        }
+
         @keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); }}
     </style>
     <!-- Three.js CDN -->
@@ -208,6 +242,13 @@
         <div style="font-size: 12px; opacity: 0.8; margin-top:5px;" id="density-val">10 Chickens</div>
     </div>
 
+    <!-- Virtual Joystick HTML -->
+    <div id="joystick-zone">
+        <div class="joystick-base">
+            <div id="joystick-stick" class="joystick-stick"></div>
+        </div>
+    </div>
+
     <div id="message-box">Mission: Collect all chickens to defeat the Wolf.</div>
 
     <div id="game-over">
@@ -216,7 +257,7 @@
         <button style="background: #ffeb3b; border: none; margin-top: 20px;" onclick="location.reload()">Try Again</button>
     </div>
 
-    <div class="key-hint">WASD / Arrows to Move</div>
+    <div class="key-hint">WASD / Arrows / Touch to Move</div>
 
     <script>
         // --- Game Config & State ---
@@ -640,6 +681,10 @@
             document.getElementById('ui-container').style.display = 'block';
             document.getElementById('settings-panel').style.display = 'block';
             
+            // Show Joystick
+            document.getElementById('joystick-zone').style.display = 'block';
+            initJoystick();
+            
             initThreeJS();
 
             for(let i=0; i<CONFIG.chickenCount; i++) {
@@ -703,6 +748,9 @@
             screen.style.display = 'flex';
             const title = document.getElementById('go-title');
             const desc = document.getElementById('go-desc');
+            // Hide joystick on game over
+            document.getElementById('joystick-zone').style.display = 'none';
+
             if(win) {
                 title.innerText = "VICTORY!";
                 title.style.color = "#4CAF50";
@@ -739,6 +787,82 @@
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
+
+        // --- Joystick Logic ---
+        function initJoystick() {
+            const zone = document.getElementById('joystick-zone');
+            const stick = document.getElementById('joystick-stick');
+            const maxDist = 35; // Max distance stick can move
+
+            let startX = 0, startY = 0;
+
+            zone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.changedTouches[0];
+                startX = touch.clientX;
+                startY = touch.clientY;
+                stick.style.transition = 'none';
+            }, { passive: false });
+
+            zone.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                const touch = e.changedTouches[0];
+                
+                let dx = touch.clientX - startX;
+                let dy = touch.clientY - startY;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                // Clamp stick movement
+                if (dist > maxDist) {
+                    const ratio = maxDist / dist;
+                    dx *= ratio;
+                    dy *= ratio;
+                }
+
+                stick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+
+                // Map to Keys
+                // Reset keys
+                state.keys.w = false; state.keys.s = false; state.keys.a = false; state.keys.d = false;
+
+                // Threshold for activation (small deadzone)
+                if (dist > 10) {
+                    // Calculate Angle
+                    const angle = Math.atan2(dy, dx); // -PI to PI
+
+                    // Simple 8-way directional mapping using Pi slices
+                    // Up: -PI/2
+                    // Down: PI/2
+                    // Left: PI or -PI
+                    // Right: 0
+
+                    // We use overlap to allow diagonals
+                    // Up (-PI * 0.8 to -PI * 0.2)
+                    if (angle > -Math.PI * 0.85 && angle < -Math.PI * 0.15) state.keys.w = true;
+                    
+                    // Down (PI * 0.2 to PI * 0.8)
+                    if (angle > Math.PI * 0.15 && angle < Math.PI * 0.85) state.keys.s = true;
+
+                    // Left ( > PI * 0.65 or < -PI * 0.65)
+                    if (Math.abs(angle) > Math.PI * 0.65) state.keys.a = true;
+
+                    // Right ( > -PI * 0.35 and < PI * 0.35)
+                    if (Math.abs(angle) < Math.PI * 0.35) state.keys.d = true;
+                }
+
+            }, { passive: false });
+
+            const endHandler = (e) => {
+                e.preventDefault();
+                stick.style.transition = 'transform 0.2s';
+                stick.style.transform = `translate(-50%, -50%)`;
+                // Reset keys
+                state.keys.w = false; state.keys.s = false; state.keys.a = false; state.keys.d = false;
+            };
+
+            zone.addEventListener('touchend', endHandler);
+            zone.addEventListener('touchcancel', endHandler);
+        }
 
         function animate() {
             if (!state.gameActive || state.gameOver) return;
