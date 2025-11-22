@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chicken Head - The Legend of Asher</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #87CEEB; }
+        
+        /* UI Overlay */
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            color: white;
+            text-shadow: 2px 2px 0 #333;
+            display: none; /* Hidden until game starts */
+        }
+
+        /* Settings Panel */
+        #settings-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px;
+            border-radius: 15px;
+            color: white;
+            pointer-events: auto;
+            display: none;
+            text-align: right;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .control-group {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        h1 { margin: 0; font-size: 24px; letter-spacing: 2px; font-weight: bold; color: #ffeb3b; }
+        
+        #stats {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .stat-row { display: flex; align-items: center; gap: 10px; }
+        
+        #chicken-counter { font-size: 28px; font-weight: bold; }
+        
+        /* Zelda-style Power Meter */
+        .meter-container {
+            width: 200px;
+            height: 20px;
+            background: rgba(0,0,0,0.5);
+            border: 2px solid white;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        #power-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            transition: width 0.3s, background 0.3s;
+        }
+
+        /* Start Screen */
+        #start-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+        }
+        
+        .difficulty-btn {
+            background: #4CAF50;
+            border: 2px solid #fff;
+            color: white;
+            width: 250px;
+            margin: 10px;
+            padding: 15px 30px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: transform 0.1s;
+        }
+        .difficulty-btn:hover { background: #45a049; transform: scale(1.05); }
+        
+        .toggle-btn {
+            background: #2196F3;
+            border: none;
+            color: white;
+            padding: 5px 15px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 4px;
+            width: auto;
+            font-weight: bold;
+        }
+        .toggle-btn.off { background: #f44336; }
+
+        input[type=range] {
+            accent-color: #ffeb3b;
+            cursor: pointer;
+        }
+
+        /* Messages */
+        #message-box {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 20px;
+            font-size: 20px;
+            text-align: center;
+            display: none;
+            border: 1px solid rgba(255,255,255,0.3);
+            animation: fadeIn 0.5s;
+        }
+
+        #game-over {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 10;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            pointer-events: all;
+            transition: transform 0.1s;
+        }
+
+        .key-hint {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); }}
+    </style>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <!-- Start Screen -->
+    <div id="start-screen">
+        <h1 style="font-size: 50px; margin-bottom: 20px; text-shadow: 0 0 10px #FFD700;">CHICKEN HEAD</h1>
+        <p style="font-size: 18px; margin-bottom: 40px;">Collect the chickens to power up. Defeat the Wolf.</p>
+        <button class="difficulty-btn" onclick="initGame('easy')">EASY (Start with 5)</button>
+        <button class="difficulty-btn" onclick="initGame('medium')">MEDIUM (Start with 15)</button>
+        <button class="difficulty-btn" onclick="initGame('hard')">HARD (Start with 30)</button>
+    </div>
+
+    <div id="ui-container">
+        <h1>CHICKEN HEAD</h1>
+        <div id="stats">
+            <div class="stat-row">
+                <span>🐔 Count:</span>
+                <span id="chicken-counter">0 / 0</span>
+            </div>
+            <div class="stat-row">
+                <span>⚡ Power:</span>
+                <div class="meter-container">
+                    <div id="power-fill"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-panel">
+        <div class="control-group">
+            <button id="music-btn" class="toggle-btn" onclick="toggleMusic()">Music: ON</button>
+        </div>
+        <div class="control-group">
+            <label for="density-slider">Density:</label>
+            <input type="range" id="density-slider" min="5" max="100" value="10" oninput="updateDensity(this.value)">
+        </div>
+        <div style="font-size: 12px; opacity: 0.8; margin-top:5px;" id="density-val">10 Chickens</div>
+    </div>
+
+    <div id="message-box">Mission: Collect all chickens to defeat the Wolf.</div>
+
+    <div id="game-over">
+        <h1 id="go-title" style="font-size: 60px; color: #ff5252;">GAME OVER</h1>
+        <p id="go-desc" style="font-size: 24px;">The Wolf was disappointed.</p>
+        <button style="background: #ffeb3b; border: none; margin-top: 20px;" onclick="location.reload()">Try Again</button>
+    </div>
+
+    <div class="key-hint">WASD / Arrows to Move</div>
+
+    <script>
+        // --- Game Config & State ---
+        let CONFIG = {
+            moveSpeed: 0.4,
+            chickenCount: 10,
+            mapSize: 200,
+            wolfRange: 15,
+            collectRange: 3
+        };
+
+        let state = {
+            score: 0,
+            totalPower: 0,
+            maxPower: 0, 
+            gameOver: false,
+            wolfDefeated: false,
+            poweredUp: false,
+            gameActive: false,
+            musicEnabled: true,
+            keys: { w: false, a: false, s: false, d: false }
+        };
+
+        // --- Three.js Globals ---
+        let scene, camera, renderer, playerGroup, wolfGroup, aura, spiritOrb;
+        const chickens = [];
+        const clock = new THREE.Clock();
+        let audioCtx, masterGain;
+
+        // --- Audio System ---
+        function toggleMusic() {
+            state.musicEnabled = !state.musicEnabled;
+            const btn = document.getElementById('music-btn');
+            if(state.musicEnabled) {
+                btn.innerText = "Music: ON";
+                btn.classList.remove('off');
+                if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+                if(masterGain) masterGain.gain.setTargetAtTime(0.15, audioCtx.currentTime, 1);
+            } else {
+                btn.innerText = "Music: OFF";
+                btn.classList.add('off');
+                if(masterGain) masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.5);
+            }
+        }
+
+        function initAudio() {
+            // Shout logic
+            window.shout = () => {
+                const utter = new SpeechSynthesisUtterance("Chicken head");
+                utter.rate = 1.2;
+                utter.pitch = 1.2; 
+                window.speechSynthesis.speak(utter);
+            };
+
+            // Music Logic: Cheerful & Dramatic Orchestral Swell
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                masterGain = audioCtx.createGain();
+                masterGain.gain.value = state.musicEnabled ? 0.15 : 0;
+                masterGain.connect(audioCtx.destination);
+
+                // Chord: C Major Add 9 (C, E, G, D) + Low C
+                // Cheerful, heroic, open sound
+                const freqs = [
+                    65.41,  // C2 (Deep Bass)
+                    130.81, // C3
+                    196.00, // G3
+                    261.63, // C4
+                    329.63, // E4
+                    392.00, // G4
+                    587.33  // D5 (High sparkle)
+                ];
+                
+                freqs.forEach((f, i) => {
+                    const osc = audioCtx.createOscillator();
+                    // Use triangle for softer, flute/horn-like sound, saw for strings
+                    osc.type = i === 0 ? 'sawtooth' : (i > 4 ? 'sine' : 'triangle'); 
+                    osc.frequency.value = f;
+                    
+                    // Detune for orchestral thickness
+                    osc.detune.value = (Math.random() - 0.5) * 15;
+
+                    const oscGain = audioCtx.createGain();
+                    oscGain.gain.value = 0.0;
+                    
+                    // Long attack for cinematic swell
+                    oscGain.gain.setTargetAtTime(0.1 / (i > 0 ? i : 0.5), audioCtx.currentTime, 2 + i);
+                    
+                    osc.connect(oscGain);
+                    oscGain.connect(masterGain);
+                    osc.start();
+                    
+                    // LFO for Vibrato/Movement (makes it feel alive)
+                    const lfo = audioCtx.createOscillator();
+                    lfo.frequency.value = 3 + Math.random() * 2; // Vibrato speed
+                    const lfoGain = audioCtx.createGain();
+                    lfoGain.gain.value = 2; // Vibrato depth
+                    lfo.connect(lfoGain);
+                    lfoGain.connect(osc.frequency);
+                    lfo.start();
+                });
+
+            } catch (e) {
+                console.log("Audio Context failed", e);
+            }
+        }
+
+        // --- Graphics Helpers ---
+
+        function createGrassTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#4caf50';
+            ctx.fillRect(0, 0, 512, 512);
+            for (let i = 0; i < 10000; i++) {
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const h = 10 + Math.random() * 20;
+                const w = 1 + Math.random() * 2;
+                const g = 100 + Math.floor(Math.random() * 100);
+                ctx.fillStyle = `rgb(50, ${g}, 50)`;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + w, y);
+                ctx.lineTo(x + w/2, y - h);
+                ctx.fill();
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(CONFIG.mapSize / 10, CONFIG.mapSize / 10);
+            return texture;
+        }
+        
+        function getTerrainHeight(x, z) {
+            let y = Math.sin(x * 0.05) * Math.cos(z * 0.05) * 2;
+            y += Math.sin(x * 0.1 + 10) * Math.cos(z * 0.1 + 20) * 1.5;
+            y += Math.sin(x * 0.02) * 4;
+            const distFromCenter = Math.sqrt(x*x + z*z);
+            if(distFromCenter < 10) y *= 0.2;
+            return y;
+        }
+
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            scene.fog = new THREE.FogExp2(0x87CEEB, 0.012);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffdfba, 0.8);
+            dirLight.position.set(50, 100, 50);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.left = -120;
+            dirLight.shadow.camera.right = 120;
+            dirLight.shadow.camera.top = 120;
+            dirLight.shadow.camera.bottom = -120;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+
+            // --- Terrain ---
+            const geomSize = CONFIG.mapSize + 50;
+            const geometry = new THREE.PlaneGeometry(geomSize, geomSize, 128, 128);
+            const posAttribute = geometry.attributes.position;
+            for (let i = 0; i < posAttribute.count; i++) {
+                const x = posAttribute.getX(i);
+                const y = posAttribute.getY(i); 
+                const z = getTerrainHeight(x, y);
+                posAttribute.setZ(i, z);
+            }
+            geometry.computeVertexNormals();
+            const groundMat = new THREE.MeshToonMaterial({ map: createGrassTexture() });
+            const ground = new THREE.Mesh(geometry, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // --- Props ---
+            const props = new THREE.Group();
+            scene.add(props);
+            const toonMaterial = (color) => new THREE.MeshToonMaterial({ color: color });
+
+            function createTree(x, z) {
+                const y = getTerrainHeight(x, z);
+                const trunkGeo = new THREE.CylinderGeometry(0.5, 0.8, 3, 6);
+                const trunkMat = toonMaterial(0x8B4513);
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                trunk.position.set(x, y + 1.5, z);
+                trunk.castShadow = true;
+                const leavesGeo = new THREE.ConeGeometry(3, 6, 8);
+                const leavesMat = toonMaterial(0x228B22);
+                const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+                leaves.position.set(0, 3, 0);
+                leaves.castShadow = true;
+                trunk.add(leaves);
+                props.add(trunk);
+            }
+
+            for (let i = 0; i < 80; i++) {
+                const x = (Math.random() - 0.5) * CONFIG.mapSize;
+                const z = (Math.random() - 0.5) * CONFIG.mapSize;
+                if (Math.abs(x) > 10 || Math.abs(z) > 10) createTree(x, z);
+            }
+
+            // Fence
+            const fenceGroup = new THREE.Group();
+            const halfSize = CONFIG.mapSize / 2;
+            const perimeterPoints = [];
+            for(let i = -halfSize; i <= halfSize; i+=10) perimeterPoints.push({x: i, z: -halfSize}); 
+            for(let i = -halfSize; i <= halfSize; i+=10) perimeterPoints.push({x: halfSize, z: i}); 
+            for(let i = halfSize; i >= -halfSize; i-=10) perimeterPoints.push({x: i, z: halfSize}); 
+            for(let i = halfSize; i >= -halfSize; i-=10) perimeterPoints.push({x: -halfSize, z: i}); 
+
+            perimeterPoints.forEach(pt => {
+                const y = getTerrainHeight(pt.x, pt.z);
+                const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 2, 0.5), toonMaterial(0x8B4513));
+                post.position.set(pt.x, y + 1, pt.z);
+                fenceGroup.add(post);
+            });
+            scene.add(fenceGroup);
+
+            // --- Player ---
+            playerGroup = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.5, 8), toonMaterial(0x4CAF50));
+            body.position.y = 0.75;
+            body.castShadow = true;
+            playerGroup.add(body);
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), toonMaterial(0xffe0bd));
+            head.position.y = 1.6;
+            const hat = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.5, 16), toonMaterial(0x4CAF50));
+            hat.rotation.x = -0.2;
+            hat.position.set(0, 0.7, -0.2);
+            head.add(hat);
+            playerGroup.add(head);
+            aura = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.0, wireframe: true }));
+            playerGroup.add(aura);
+            playerGroup.position.set(0, getTerrainHeight(0, 0), 0);
+            scene.add(playerGroup);
+
+            // --- Wolf ---
+            wolfGroup = new THREE.Group();
+            const wBody = new THREE.Mesh(new THREE.BoxGeometry(2, 1.5, 4), toonMaterial(0x333333));
+            wBody.position.y = 1.5;
+            wBody.castShadow = true;
+            const wHead = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 2), toonMaterial(0x333333));
+            wHead.position.set(0, 2.5, 2);
+            const wSnout = new THREE.Mesh(new THREE.BoxGeometry(1, 0.8, 1), toonMaterial(0x111111));
+            wSnout.position.set(0, 2.2, 3.2);
+            const wEyes = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.2, 0.1), new THREE.MeshBasicMaterial({color: 0xff0000}));
+            wEyes.position.set(0, 2.8, 3.05);
+            wolfGroup.add(wBody); wolfGroup.add(wHead); wolfGroup.add(wSnout); wolfGroup.add(wEyes);
+            const wolfX = 0, wolfZ = -40;
+            wolfGroup.position.set(wolfX, getTerrainHeight(wolfX, wolfZ), wolfZ);
+            scene.add(wolfGroup);
+
+            // --- Spirit Orb ---
+            spiritOrb = new THREE.Mesh(new THREE.SphereGeometry(2, 32, 32), new THREE.MeshBasicMaterial({ color: 0x00ffff }));
+            spiritOrb.visible = false;
+            scene.add(spiritOrb);
+
+            // --- Gate ---
+            const gateGroup = new THREE.Group();
+            const gateY = getTerrainHeight(0, -45);
+            const post1 = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 1), toonMaterial(0x555555));
+            post1.position.set(-5, gateY + 5, -45);
+            const post2 = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 1), toonMaterial(0x555555));
+            post2.position.set(5, gateY + 5, -45);
+            const beam = new THREE.Mesh(new THREE.BoxGeometry(12, 2, 1), toonMaterial(0x555555));
+            beam.position.set(0, gateY + 9, -45);
+            gateGroup.add(post1); gateGroup.add(post2); gateGroup.add(beam);
+            scene.add(gateGroup);
+        }
+
+        // --- Chicken Logic ---
+        class Chicken {
+            constructor(type) {
+                this.type = type; 
+                this.mesh = new THREE.Group();
+                
+                const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), new THREE.MeshToonMaterial({ color: type.color }));
+                body.position.y = 0.5;
+                body.castShadow = true;
+                const beak = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.2, 8), new THREE.MeshToonMaterial({ color: 0xffaa00 }));
+                beak.rotation.x = Math.PI / 2;
+                beak.position.set(0, 0.5, 0.4);
+                const comb = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.2), new THREE.MeshToonMaterial({ color: 0xff0000 }));
+                comb.position.set(0, 0.9, 0);
+
+                this.mesh.add(body); this.mesh.add(beak); this.mesh.add(comb);
+                
+                const angle = Math.random() * Math.PI * 2;
+                const limit = CONFIG.mapSize/2 - 5;
+                const radius = 20 + Math.random() * (limit - 20);
+                const x = Math.cos(angle)*radius;
+                const z = Math.sin(angle)*radius;
+                const y = getTerrainHeight(x, z);
+                
+                this.mesh.position.set(x, y, z);
+                if(type.power > 20) {
+                    const light = new THREE.PointLight(0xffd700, 1, 5);
+                    light.position.y = 1;
+                    this.mesh.add(light);
+                }
+                scene.add(this.mesh);
+                this.walkTimer = 0;
+                this.direction = new THREE.Vector3();
+                this.collected = false;
+                this.hopOffset = Math.random() * 100;
+            }
+
+            update(time) {
+                if (this.collected) return;
+                if (time > this.walkTimer) {
+                    this.walkTimer = time + 1 + Math.random() * 3;
+                    const angle = Math.random() * Math.PI * 2;
+                    this.direction.set(Math.cos(angle), 0, Math.sin(angle)).normalize();
+                }
+                const moveSpeed = 0.03 * this.type.speed;
+                const nextX = this.mesh.position.x + this.direction.x * moveSpeed;
+                const nextZ = this.mesh.position.z + this.direction.z * moveSpeed;
+                const limit = CONFIG.mapSize/2 - 2;
+                if(nextX > -limit && nextX < limit && nextZ > -limit && nextZ < limit) {
+                    this.mesh.position.x = nextX;
+                    this.mesh.position.z = nextZ;
+                } else {
+                    this.direction.negate();
+                }
+                const groundH = getTerrainHeight(this.mesh.position.x, this.mesh.position.z);
+                const hop = Math.abs(Math.sin(time * 5 + this.hopOffset)) * 0.2;
+                this.mesh.position.y = groundH + hop;
+                this.mesh.rotation.y = Math.atan2(this.direction.x, this.direction.z);
+            }
+
+            remove() {
+                this.collected = true;
+                window.shout();
+                const interval = setInterval(() => {
+                    this.mesh.scale.multiplyScalar(0.8);
+                    if(this.mesh.scale.x < 0.1) {
+                        scene.remove(this.mesh);
+                        clearInterval(interval);
+                    }
+                }, 50);
+            }
+        }
+
+        // --- Main Game Functions ---
+
+        function spawnSingleChicken() {
+            const types = [
+                { color: 0xffffff, power: 10, speed: 1 }, 
+                { color: 0x8B4513, power: 25, speed: 1.2 },
+                { color: 0xFFD700, power: 60, speed: 1.5 }
+            ];
+            let typeIdx = 0;
+            const rand = Math.random();
+            if(rand > 0.7) typeIdx = 1; 
+            if(rand > 0.9) typeIdx = 2;
+            const chk = new Chicken(types[typeIdx]);
+            chickens.push(chk);
+            // Recalculate max power possibility
+            state.maxPower += types[typeIdx].power;
+            return chk;
+        }
+
+        function updateDensity(val) {
+            const target = parseInt(val);
+            document.getElementById('density-val').innerText = target + " Chickens";
+            
+            const currentCount = chickens.filter(c => !c.collected).length;
+            
+            // If we need more
+            if(target > CONFIG.chickenCount) {
+                const diff = target - CONFIG.chickenCount;
+                for(let i=0; i<diff; i++) {
+                    spawnSingleChicken();
+                }
+            } 
+            // If we need fewer
+            else if (target < CONFIG.chickenCount) {
+                 const diff = CONFIG.chickenCount - target;
+                 // Remove uncollected chickens from end of array
+                 let removed = 0;
+                 for(let i=chickens.length-1; i>=0; i--) {
+                     if(!chickens[i].collected && removed < diff) {
+                         scene.remove(chickens[i].mesh);
+                         state.maxPower -= chickens[i].type.power; // Adjust max power calc
+                         chickens.splice(i, 1);
+                         removed++;
+                     }
+                 }
+            }
+            CONFIG.chickenCount = target;
+            updateUI();
+        }
+
+        function initGame(difficulty) {
+            initAudio();
+            
+            let count = 10;
+            if(difficulty === 'easy') count = 5;
+            if(difficulty === 'medium') count = 15;
+            if(difficulty === 'hard') count = 30;
+
+            CONFIG.chickenCount = count;
+            document.getElementById('density-slider').value = count;
+            document.getElementById('density-val').innerText = count + " Chickens";
+
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('ui-container').style.display = 'block';
+            document.getElementById('settings-panel').style.display = 'block';
+            
+            initThreeJS();
+
+            for(let i=0; i<CONFIG.chickenCount; i++) {
+                spawnSingleChicken();
+            }
+
+            updateUI();
+            state.gameActive = true;
+            animate();
+            
+            showMessage("Find the chickens! Listen for the call.");
+        }
+
+        function updateUI() {
+            document.getElementById('chicken-counter').innerText = `${state.score} / ${CONFIG.chickenCount}`;
+            let powerPercent = 0;
+            if(state.maxPower > 0) {
+                powerPercent = (state.totalPower / state.maxPower) * 100;
+            }
+            const bar = document.getElementById('power-fill');
+            bar.style.width = `${powerPercent}%`;
+            
+            // Use a percentage based win condition now that count varies
+            // Or just basic check: if score >= current config count.
+            // However, dynamically removing chickens might trigger win instantly if score > new count.
+            // Simplified: Win if current collected score >= current active chickens count + collected score.
+            // Actually, just check if uncollected chickens == 0
+            
+            const uncollected = chickens.filter(c => !c.collected).length;
+
+            if(uncollected === 0 && chickens.length > 0 && !state.poweredUp) {
+                state.poweredUp = true;
+                bar.style.background = "linear-gradient(90deg, #FFD700, #FF8C00)";
+                bar.style.boxShadow = "0 0 15px #FFD700";
+                showMessage("MAXIMUM POWER! Defeat the Wolf!");
+                aura.material.opacity = 0.6;
+                scene.add(new THREE.PointLight(0xffd700, 2, 15)).position.copy(playerGroup.position);
+            }
+        }
+
+        function showMessage(text) {
+            const el = document.getElementById('message-box');
+            el.innerText = text;
+            el.style.display = 'block';
+            setTimeout(() => { el.style.display = 'none'; }, 4000);
+        }
+
+        function endGame(win) {
+            if(win) {
+                state.wolfDefeated = true;
+                showMessage("The Wolf is defeated! The curse is lifted!");
+                setTimeout(() => showEndScreen(true), 4000);
+            } else {
+                state.gameOver = true;
+                showEndScreen(false);
+            }
+        }
+
+        function showEndScreen(win) {
+            const screen = document.getElementById('game-over');
+            screen.style.display = 'flex';
+            const title = document.getElementById('go-title');
+            const desc = document.getElementById('go-desc');
+            if(win) {
+                title.innerText = "VICTORY!";
+                title.style.color = "#4CAF50";
+                desc.innerText = `Asher gathered ${state.totalPower} power and escaped!`;
+            } else {
+                title.innerText = "DEFEAT";
+                title.style.color = "#ff5252";
+                desc.innerText = "The Wolf caught you.";
+            }
+        }
+
+        // --- Loop & Input ---
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if(state.keys.hasOwnProperty(key) || key.includes('arrow')) {
+                if(key === 'w' || key === 'arrowup') state.keys.w = true;
+                if(key === 'a' || key === 'arrowleft') state.keys.a = true;
+                if(key === 's' || key === 'arrowdown') state.keys.s = true;
+                if(key === 'd' || key === 'arrowright') state.keys.d = true;
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if(state.keys.hasOwnProperty(key) || key.includes('arrow')) {
+                if(key === 'w' || key === 'arrowup') state.keys.w = false;
+                if(key === 'a' || key === 'arrowleft') state.keys.a = false;
+                if(key === 's' || key === 'arrowdown') state.keys.s = false;
+                if(key === 'd' || key === 'arrowright') state.keys.d = false;
+            }
+        });
+        window.addEventListener('resize', () => {
+            if(!camera) return;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+            if (!state.gameActive || state.gameOver) return;
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+
+            if(!state.wolfDefeated) {
+                const moveDir = new THREE.Vector3(0, 0, 0);
+                if (state.keys.w) moveDir.z -= 1;
+                if (state.keys.s) moveDir.z += 1;
+                if (state.keys.a) moveDir.x -= 1;
+                if (state.keys.d) moveDir.x += 1;
+                if (moveDir.lengthSq() > 0) {
+                    moveDir.normalize();
+                    const nextX = playerGroup.position.x + moveDir.x * CONFIG.moveSpeed;
+                    const nextZ = playerGroup.position.z + moveDir.z * CONFIG.moveSpeed;
+                    const limit = CONFIG.mapSize/2 - 1;
+                    if(nextX > -limit && nextX < limit && nextZ > -limit && nextZ < limit) {
+                        playerGroup.position.x = nextX;
+                        playerGroup.position.z = nextZ;
+                    }
+                    playerGroup.position.y = getTerrainHeight(playerGroup.position.x, playerGroup.position.z);
+                    const targetRot = Math.atan2(moveDir.x, moveDir.z);
+                    let angle = targetRot - playerGroup.rotation.y;
+                    while (angle <= -Math.PI) angle += Math.PI*2;
+                    while (angle > Math.PI) angle -= Math.PI*2;
+                    playerGroup.rotation.y += angle * 0.2;
+                }
+            }
+
+            const camOffset = new THREE.Vector3(0, 15, 18);
+            const targetCamPos = playerGroup.position.clone().add(camOffset);
+            camera.position.lerp(targetCamPos, 0.1);
+            camera.lookAt(playerGroup.position);
+
+            chickens.forEach(chicken => {
+                chicken.update(time);
+                if (!chicken.collected && playerGroup.position.distanceTo(chicken.mesh.position) < CONFIG.collectRange) {
+                    chicken.remove();
+                    state.score++;
+                    state.totalPower += chicken.type.power;
+                    updateUI();
+                    if(chicken.type.power > 20) showMessage(`Found a ${chicken.type.power > 50 ? 'LEGENDARY' : 'RARE'} Chicken!`);
+                }
+            });
+
+            if(state.wolfDefeated) {
+                wolfGroup.rotation.z += 0.05;
+                wolfGroup.rotation.x += 0.02;
+                if(wolfGroup.scale.y > 0.01) wolfGroup.scale.multiplyScalar(0.98);
+                else wolfGroup.visible = false;
+                if(!spiritOrb.visible) {
+                    spiritOrb.position.copy(wolfGroup.position);
+                    spiritOrb.position.y += 2;
+                    spiritOrb.visible = true;
+                    const flash = new THREE.PointLight(0x00ffff, 5, 20);
+                    flash.position.copy(spiritOrb.position);
+                    scene.add(flash);
+                    setTimeout(() => scene.remove(flash), 500);
+                }
+                spiritOrb.scale.setScalar(1 + Math.sin(time * 10) * 0.2);
+            } else {
+                const distToWolf = playerGroup.position.distanceTo(wolfGroup.position);
+                wolfGroup.scale.y = 1 + Math.sin(time * 2) * 0.05;
+                wolfGroup.position.y = getTerrainHeight(wolfGroup.position.x, wolfGroup.position.z);
+                if (distToWolf < CONFIG.wolfRange) {
+                    wolfGroup.lookAt(playerGroup.position);
+                    if (state.poweredUp) {
+                        const retreatDir = wolfGroup.position.clone().sub(playerGroup.position).normalize();
+                        wolfGroup.position.addScaledVector(retreatDir, 0.15);
+                        if (distToWolf < 3) endGame(true);
+                    } else {
+                        const chaseDir = playerGroup.position.clone().sub(wolfGroup.position).normalize();
+                        wolfGroup.position.addScaledVector(chaseDir, 0.12);
+                        if (distToWolf < 2.5) endGame(false);
+                    }
+                } else {
+                    if (wolfGroup.position.z > -40) wolfGroup.position.z -= 0.05;
+                }
+            }
+            if(state.poweredUp) {
+                aura.rotation.y += 0.05;
+                aura.rotation.z += 0.05;
+            }
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
