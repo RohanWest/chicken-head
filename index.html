@@ -312,52 +312,93 @@
                 window.speechSynthesis.speak(utter);
             };
 
-            // Music Logic: Cheerful & Dramatic Orchestral Swell
+            // Music Logic: Light Wind & Ethereal Chimes
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 masterGain = audioCtx.createGain();
-                masterGain.gain.value = state.musicEnabled ? 0.15 : 0;
+                masterGain.gain.value = state.musicEnabled ? 0.4 : 0;
                 masterGain.connect(audioCtx.destination);
 
-                // Chord: C Major Add 9 (C, E, G, D) + Low C
-                // Cheerful, heroic, open sound
-                const freqs = [
-                    65.41,  // C2 (Deep Bass)
-                    130.81, // C3
-                    196.00, // G3
-                    261.63, // C4
-                    329.63, // E4
-                    392.00, // G4
-                    587.33  // D5 (High sparkle)
-                ];
+                // 1. Wind Noise Generator (Pink/White noise filtered)
+                const bufferSize = audioCtx.sampleRate * 4; // 4 seconds loop
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                
+                // Generate noise
+                for (let i = 0; i < bufferSize; i++) {
+                    // Simple approximation of Pink Noise (softer than white)
+                    const white = Math.random() * 2 - 1;
+                    data[i] = (lastOut + (0.02 * white)) / 1.02;
+                    lastOut = data[i];
+                    data[i] *= 3.5; // Compensate for gain loss
+                }
+                var lastOut = 0;
+
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                noise.loop = true;
+
+                // Filter the noise to sound like wind
+                const windFilter = audioCtx.createBiquadFilter();
+                windFilter.type = 'lowpass';
+                windFilter.frequency.value = 300;
+                windFilter.Q.value = 1;
+
+                // LFO to modulate the wind "gusts"
+                const windLFO = audioCtx.createOscillator();
+                windLFO.type = 'sine';
+                windLFO.frequency.value = 0.15; // Slow cycle
+                const lfoGain = audioCtx.createGain();
+                lfoGain.gain.value = 200; // Range of frequency sweep
+
+                windLFO.connect(lfoGain);
+                lfoGain.connect(windFilter.frequency);
+                
+                noise.connect(windFilter);
+                windFilter.connect(masterGain);
+
+                windLFO.start();
+                noise.start();
+
+                // 2. Ethereal Tones (Random swells)
+                // Pentatonic Scale (F# Major Pentatonic: F#, G#, A#, C#, D#) -> Airy feel
+                const freqs = [369.99, 415.30, 466.16, 554.37, 622.25]; 
                 
                 freqs.forEach((f, i) => {
                     const osc = audioCtx.createOscillator();
-                    // Use triangle for softer, flute/horn-like sound, saw for strings
-                    osc.type = i === 0 ? 'sawtooth' : (i > 4 ? 'sine' : 'triangle'); 
+                    osc.type = 'sine'; // Pure tone
                     osc.frequency.value = f;
                     
-                    // Detune for orchestral thickness
-                    osc.detune.value = (Math.random() - 0.5) * 15;
-
                     const oscGain = audioCtx.createGain();
-                    oscGain.gain.value = 0.0;
-                    
-                    // Long attack for cinematic swell
-                    oscGain.gain.setTargetAtTime(0.1 / (i > 0 ? i : 0.5), audioCtx.currentTime, 2 + i);
+                    oscGain.gain.value = 0; // Start silent
                     
                     osc.connect(oscGain);
                     oscGain.connect(masterGain);
                     osc.start();
+
+                    // Create an independent loop for each note to swell in and out
+                    const swell = () => {
+                        if(audioCtx.state !== 'running') return;
+                        
+                        // Random timings
+                        const delay = Math.random() * 5000;
+                        const attack = 2 + Math.random() * 3;
+                        const hold = 1 + Math.random() * 2;
+                        const release = 2 + Math.random() * 3;
+                        
+                        setTimeout(() => {
+                            const now = audioCtx.currentTime;
+                            // Gentle Fade In
+                            oscGain.gain.linearRampToValueAtTime(0.05, now + attack);
+                            // Gentle Fade Out
+                            oscGain.gain.linearRampToValueAtTime(0, now + attack + hold + release);
+                            
+                            // Schedule next swell
+                            setTimeout(swell, (attack + hold + release) * 1000);
+                        }, delay);
+                    };
                     
-                    // LFO for Vibrato/Movement (makes it feel alive)
-                    const lfo = audioCtx.createOscillator();
-                    lfo.frequency.value = 3 + Math.random() * 2; // Vibrato speed
-                    const lfoGain = audioCtx.createGain();
-                    lfoGain.gain.value = 2; // Vibrato depth
-                    lfo.connect(lfoGain);
-                    lfoGain.connect(osc.frequency);
-                    lfo.start();
+                    swell();
                 });
 
             } catch (e) {
