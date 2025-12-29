@@ -81,7 +81,7 @@
         let width, height;
         let drops = [];
         let obstacles = [];
-        const numDrops = 400;
+        const numDrops = 600; // Increased to cover wider spawn area
         let wind = 0;
         let speedMultiplier = 1.0;
         let lightningTimer = 0;
@@ -269,9 +269,6 @@
 
             reset(initial = false) {
                 this.z = Math.random() * 20; // Depth (0 is close, 20 is far)
-                this.x = Math.random() * width;
-                // If initial, place anywhere. If resetting, place above top.
-                this.y = initial ? Math.random() * height : -50; 
                 
                 // Speed depends on depth (closer = faster)
                 this.baseSpeed = map(this.z, 0, 20, 8, 3);
@@ -293,6 +290,39 @@
                 this.settled = false;
                 this.settledOn = null; // Reference to the obstacle it settled on
                 this.settleAngle = 0; // Relative position on the obstacle
+
+                // --- Improved Spawn Logic for Wind Coverage ---
+                // Calculate the horizontal distance the drop will travel while falling
+                // We use a safe estimate of flight time based on height and speed
+                const driftFactor = map(this.z, 0, 20, 1.5, 0.5);
+                const flightTime = height / (this.baseSpeed * speedMultiplier);
+                
+                // Calculate total horizontal travel distance
+                const travelX = (wind * driftFactor * speedMultiplier) * flightTime;
+                
+                // Dynamic Spawn Range:
+                // We expand the spawn area so that drops can spawn "off screen" and blow into view.
+                // If wind is blowing Right (Positive), we need to spawn further Left.
+                // If wind is blowing Left (Negative), we need to spawn further Right.
+                
+                let minX = -50;
+                let maxX = width + 50;
+                
+                if (wind > 0) {
+                    // Blowing right: Spawn area needs to extend to the left
+                    // We use travelX (which is positive) to shift minX left
+                    minX -= Math.abs(travelX);
+                } else {
+                    // Blowing left: Spawn area needs to extend to the right
+                    // We use travelX (which is negative) to shift maxX right
+                    maxX += Math.abs(travelX);
+                }
+                
+                this.x = Math.random() * (maxX - minX) + minX;
+                
+                // ----------------------------------------------
+
+                this.y = initial ? Math.random() * height : -50; 
             }
 
             fall() {
@@ -323,11 +353,23 @@
 
                 this.checkCollisions();
 
-                // Wrap around edges for x
-                if (this.x > width + 50) this.x = -50;
-                if (this.x < -50) this.x = width + 50;
+                // Logic to reset drops. 
+                // We reset if they fall off the bottom, OR if they drift too far off the sides 
+                // (moving away from the screen) to recycle them.
+                
+                const isBelowScreen = this.y > height + 50;
+                const isOffScreenRight = this.x > width + 200; // Buffer for wide shapes
+                const isOffScreenLeft = this.x < -200;
 
-                if (this.y > height + 50) {
+                if (isBelowScreen) {
+                    this.reset();
+                } 
+                // Only reset side-exits if they are moving AWAY from the center
+                // e.g., if wind is blowing right, reset if it goes off right.
+                else if (wind > 0 && isOffScreenRight) {
+                    this.reset();
+                }
+                else if (wind < 0 && isOffScreenLeft) {
                     this.reset();
                 }
             }
