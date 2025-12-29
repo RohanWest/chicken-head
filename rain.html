@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atmospheric Rain Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #050510; /* Very dark blue/black */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: crosshair; /* Default cursor */
+        }
+        
+        /* Change cursor when hovering over draggable items via JS if needed, 
+           but simple pointer-events logic works well enough for this style */
+
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            pointer-events: none;
+            user-select: none;
+            z-index: 10;
+        }
+
+        #controls input, #controls button {
+            pointer-events: auto;
+            vertical-align: middle;
+            margin-left: 10px;
+            cursor: pointer;
+        }
+        
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: inherit;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .highlight {
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="controls">
+        <div><span class="highlight">Click empty space</span> to add forms. <span class="highlight">Drag</span> to move forms.</div>
+        <div style="margin-top: 8px;">
+            <label for="speedRange">Speed:</label>
+            <input type="range" id="speedRange" min="0.1" max="5.0" step="0.1" value="1.0">
+            <button id="clearBtn">Clear Forms</button>
+        </div>
+    </div>
+    <canvas id="rainCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('rainCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let drops = [];
+        let obstacles = [];
+        const numDrops = 400;
+        let wind = 0;
+        let speedMultiplier = 1.0;
+        let lightningTimer = 0;
+        let lightningOpacity = 0;
+
+        // Interaction state
+        let mouseX = 0;
+        let mouseY = 0;
+        let windowCenter = 0;
+        let draggingObstacle = null;
+        let dragOffset = { x: 0, y: 0 };
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            windowCenter = width / 2;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Mouse Events
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+            
+            const mx = e.clientX;
+            const my = e.clientY;
+            let hitFound = false;
+
+            // Check if clicking existing obstacle (reverse loop to catch top-most first)
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                const dx = mx - obs.x;
+                const dy = my - obs.y;
+                // Check collision with circle area
+                if (Math.sqrt(dx*dx + dy*dy) < obs.radius) {
+                    draggingObstacle = obs;
+                    dragOffset.x = mx - obs.x;
+                    dragOffset.y = my - obs.y;
+                    hitFound = true;
+                    break;
+                }
+            }
+
+            // If not clicking an obstacle, create a new one
+            if (!hitFound) {
+                obstacles.push({
+                    x: mx,
+                    y: my,
+                    radius: 40 + Math.random() * 40 // Random radius between 40 and 80
+                });
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+
+            if (draggingObstacle) {
+                draggingObstacle.x = mouseX - dragOffset.x;
+                draggingObstacle.y = mouseY - dragOffset.y;
+            }
+
+            // Map mouse position relative to center to wind value (-2 to 2)
+            wind = (mouseX - windowCenter) / windowCenter * 3;
+        });
+
+        window.addEventListener('mouseup', () => {
+            draggingObstacle = null;
+        });
+
+        // Touch Events
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+            
+            const touch = e.touches[0];
+            const mx = touch.clientX;
+            const my = touch.clientY;
+            
+            // Update mouse vars for wind calculation
+            mouseX = mx; 
+            mouseY = my;
+
+            let hitFound = false;
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                const dx = mx - obs.x;
+                const dy = my - obs.y;
+                if (Math.sqrt(dx*dx + dy*dy) < obs.radius) {
+                    draggingObstacle = obs;
+                    dragOffset.x = mx - obs.x;
+                    dragOffset.y = my - obs.y;
+                    hitFound = true;
+                    break;
+                }
+            }
+
+            if (!hitFound) {
+                obstacles.push({
+                    x: mx,
+                    y: my,
+                    radius: 40 + Math.random() * 40
+                });
+            }
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+
+            if (draggingObstacle) {
+                draggingObstacle.x = mouseX - dragOffset.x;
+                draggingObstacle.y = mouseY - dragOffset.y;
+            }
+
+            wind = (mouseX - windowCenter) / windowCenter * 3;
+        }, { passive: false });
+
+        window.addEventListener('touchend', () => {
+            draggingObstacle = null;
+        });
+
+        // UI Controls
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            obstacles = [];
+            draggingObstacle = null;
+        });
+
+        const speedSlider = document.getElementById('speedRange');
+        speedSlider.addEventListener('input', (e) => {
+            speedMultiplier = parseFloat(e.target.value);
+        });
+
+
+        class Drop {
+            constructor() {
+                this.reset(true);
+            }
+
+            reset(initial = false) {
+                this.z = Math.random() * 20; // Depth (0 is close, 20 is far)
+                this.x = Math.random() * width;
+                // If initial, place anywhere. If resetting, place above top.
+                this.y = initial ? Math.random() * height : -50; 
+                
+                // Speed depends on depth (closer = faster)
+                this.baseSpeed = map(this.z, 0, 20, 8, 3);
+                this.yspeed = this.baseSpeed;
+                
+                // Size depends on depth
+                this.size = map(this.z, 0, 20, 10, 3);
+                
+                // Opacity depends on depth
+                this.initialOpacity = map(this.z, 0, 20, 0.8, 0.2);
+                this.opacity = this.initialOpacity;
+                
+                // Abstract properties
+                this.shapeType = Math.floor(Math.random() * 3); // 0: Circle, 1: Square, 2: Triangle
+                this.hue = Math.random() * 360;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+                
+                this.settled = false;
+                this.settledOn = null; // Reference to the obstacle it settled on
+                this.settleAngle = 0; // Relative position on the obstacle
+            }
+
+            fall() {
+                if (this.settled) {
+                    // If stuck to an object, move with it
+                    if (this.settledOn) {
+                        this.x = this.settledOn.x + Math.cos(this.settleAngle) * this.settledOn.radius;
+                        this.y = this.settledOn.y + Math.sin(this.settleAngle) * this.settledOn.radius;
+                    }
+
+                    // Fade out logic when settled
+                    this.opacity -= 0.005;
+                    if (this.opacity <= 0) {
+                        this.reset();
+                    }
+                    return;
+                }
+
+                // Apply speedMultiplier to movement and physics
+                const currentSpeed = this.yspeed * speedMultiplier;
+                this.y += currentSpeed;
+                this.x += wind * map(this.z, 0, 20, 1.5, 0.5) * speedMultiplier;
+                
+                const grav = map(this.z, 0, 20, 0.2, 0.05);
+                this.yspeed += grav * speedMultiplier;
+                
+                this.rotation += this.rotationSpeed * speedMultiplier;
+
+                this.checkCollisions();
+
+                // Wrap around edges for x
+                if (this.x > width + 50) this.x = -50;
+                if (this.x < -50) this.x = width + 50;
+
+                if (this.y > height + 50) {
+                    this.reset();
+                }
+            }
+            
+            checkCollisions() {
+                for (let obs of obstacles) {
+                    const dx = this.x - obs.x;
+                    const dy = this.y - obs.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Collision threshold logic
+                    const velocity = this.yspeed * speedMultiplier;
+                    const threshold = Math.max(15, velocity);
+                    
+                    if (Math.abs(dist - obs.radius) < threshold) {
+                         this.settled = true;
+                         this.settledOn = obs;
+                         
+                         // Calculate angle to maintain relative position if object moves
+                         this.settleAngle = Math.atan2(dy, dx);
+                         
+                         // Snap visually to the circle perimeter
+                         this.x = obs.x + Math.cos(this.settleAngle) * obs.radius;
+                         this.y = obs.y + Math.sin(this.settleAngle) * obs.radius;
+                         return; // Stop checking other obstacles
+                    }
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${this.opacity})`;
+                ctx.beginPath();
+                
+                if (this.shapeType === 0) {
+                    // Circle
+                    ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+                } else if (this.shapeType === 1) {
+                    // Square
+                    ctx.fillRect(-this.size, -this.size, this.size * 2, this.size * 2);
+                } else {
+                    // Triangle
+                    ctx.moveTo(0, -this.size);
+                    ctx.lineTo(this.size, this.size);
+                    ctx.lineTo(-this.size, this.size);
+                    ctx.closePath();
+                }
+                
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Initialize drops
+        for (let i = 0; i < numDrops; i++) {
+            drops.push(new Drop());
+        }
+
+        // Utility function to map values from one range to another
+        function map(value, start1, stop1, start2, stop2) {
+            return start2 + (stop2 - start2) * ((value - start1) / (stop1 - start1));
+        }
+
+        function triggerLightning() {
+            lightningOpacity = 0.8 + Math.random() * 0.2; // Flash brightness
+        }
+
+        function drawLightning() {
+            if (lightningOpacity > 0) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${lightningOpacity})`;
+                ctx.fillRect(0, 0, width, height);
+                // Fade out quickly
+                lightningOpacity -= 0.05; 
+            }
+        }
+        
+        function drawObstacles() {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 3;
+            for (let obs of obstacles) {
+                ctx.beginPath();
+                ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+        function loop() {
+            // Background clearing
+            ctx.fillStyle = '#050510'; // Dark background
+            ctx.fillRect(0, 0, width, height);
+
+            // Occasional random lightning
+            if (Math.random() < 0.001) {
+                triggerLightning();
+            }
+            drawLightning();
+            
+            drawObstacles();
+
+            // Draw and update drops
+            for (let i = 0; i < drops.length; i++) {
+                drops[i].fall();
+                drops[i].draw();
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+
+    </script>
+</body>
+</html>
